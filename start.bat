@@ -1,15 +1,22 @@
 @echo off
-chcp 65001 >nul
+title Nyx Dashboard
 echo ============================================
-echo Nyx Visual Analytics Dashboard
+echo   Nyx Visual Analytics Dashboard
 echo ============================================
 echo.
-echo Killing old Python processes...
-taskkill /F /IM python.exe >nul 2>&1
-taskkill /F /IM python3.11.exe >nul 2>&1
-timeout /t 2 /nobreak >nul
-echo Starting server on http://127.0.0.1:9050 ...
+echo [1/3] Checking port 9055...
+for /f "tokens=5" %%a in ('netstat -ano ^| findstr ":9055.*LISTENING"') do (
+    echo   Killing old process on port 9055 (PID: %%a)
+    taskkill /F /PID %%a >nul 2>nul
+)
+timeout /t 1 /nobreak >nul
+echo   Port 9055 is free.
 echo.
-cd /d "e:\数据可视化"
-C:\Users\LENOVO\AppData\Local\Programs\Python\Python311\python.exe app.py
+echo [2/3] Starting Python server...
+echo   Loading 100 time steps (~800MB, please wait)...
+echo.
+cd /d "%~dp0"
+"C:\Users\LENOVO\AppData\Local\Programs\Python\Python311\python.exe" app.py
+echo.
+echo [3/3] Server stopped.
 pause

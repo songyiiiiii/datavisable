@@ -10,6 +10,7 @@ import numpy as np
 import dash
 from dash import dcc, html, Input, Output, State, ctx
 import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 import base64, os
 
 from config import *
@@ -29,6 +30,8 @@ TW_MEANS = np.array([ALL_100[t].mean() for t in range(N_TIMESTEPS)])
 TW_STDS  = np.array([ALL_100[t].std()  for t in range(N_TIMESTEPS)])
 TW_MINS  = np.array([ALL_100[t].min()  for t in range(N_TIMESTEPS)])
 TW_MAXS  = np.array([ALL_100[t].max()  for t in range(N_TIMESTEPS)])
+means_100 = TW_MEANS  # alias for sparklines
+stds_100  = TW_STDS   # alias for sparklines
 
 # Pre-compute 10 radial metrics for all steps
 _TW_RAW = np.zeros((N_TIMESTEPS, 10))
@@ -46,6 +49,8 @@ for t in range(N_TIMESTEPS):
 _TW_VMIN = _TW_RAW.min(axis=0); _TW_VMAX = _TW_RAW.max(axis=0)
 _TW_VRNG = _TW_VMAX - _TW_VMIN; _TW_VRNG[_TW_VRNG==0] = 1
 TW_NORMED = (_TW_RAW - _TW_VMIN) / _TW_VRNG * 8 + 1  # [1, 9] normalized
+
+# Pre-load 32^3 data for go.Volume real-time rendering
 TW_THETA = np.linspace(0, 10 * np.pi, N_TIMESTEPS)
 TW_RADIUS = np.linspace(2, 10, N_TIMESTEPS)
 
@@ -66,9 +71,65 @@ T1_STEPS = list(range(0, 100, 2))
 if 99 not in T1_STEPS: T1_STEPS.append(99)
 T1_STEPS = sorted(set(T1_STEPS))
 
+# Pre-load 32^3 data for go.Volume real-time rendering
+VOL_SS = 4  # 128 -> 32
+VOL_SIZE = GRID_SIZE // VOL_SS
+VOL_DATA = {}
+VOL_X = np.arange(0, GRID_SIZE, VOL_SS, dtype=np.float32)
+VOL_Y = np.arange(0, GRID_SIZE, VOL_SS, dtype=np.float32)
+VOL_Z = np.arange(0, GRID_SIZE, VOL_SS, dtype=np.float32)
+for ts in T1_STEPS:
+    d = ALL_100[ts][::VOL_SS, ::VOL_SS, ::VOL_SS]
+    d_xyz = np.ascontiguousarray(np.transpose(d, (2, 1, 0)))
+    VOL_DATA[ts] = d_xyz.flatten(order="C")
+
 # ============================================================================
 # Figure builders
 # ============================================================================
+def fig_t1_volume(step):
+    """Real-time WebGL volume rendering via Plotly go.Volume."""
+    nearest = min(T1_STEPS, key=lambda x: abs(x - step))
+    if nearest not in VOL_DATA:
+        nearest = min(VOL_DATA.keys(), key=lambda x: abs(x - nearest))
+    values = VOL_DATA[nearest]
+
+    fig = go.Figure()
+    fig.add_trace(go.Volume(
+        x=VOL_X, y=VOL_Y, z=VOL_Z, value=values,
+        isomin=7.8, isomax=13.5, surface_count=22,
+        colorscale=[
+            [0.00, BLUE_700], [0.10, BLUE_500], [0.20, BLUE_300],
+            [0.35, GRAY_500], [0.50, GRAY_200], [0.65, RED_100],
+            [0.80, RED_300], [0.90, RED_500], [1.00, RED_700],
+        ],
+        opacityscale=[
+            [7.5, 0.0], [8.0, 0.02], [8.5, 0.05], [9.2, 0.08],
+            [10.0, 0.20], [10.8, 0.45], [12.0, 0.70], [13.5, 0.90],
+        ],
+        caps=dict(x_show=False, y_show=False, z_show=False),
+        slices_z=dict(show=True, locations=[40, 80]),
+        lighting=dict(ambient=0.3, diffuse=0.7, specular=0.3, roughness=0.5, fresnel=0.2),
+        lightposition=dict(x=300, y=300, z=400),
+        showscale=True,
+        colorbar=dict(title=dict(text="ln(rho)", font=dict(color=GRAY_600)),
+                      tickfont=dict(color=GRAY_500), outlinecolor=GRAY_300,
+                      thickness=12, len=0.55),
+        hoverinfo="skip", name="",
+    ))
+    fig.update_layout(
+        title=dict(text=f"Task 1: Volume Rendering — t={step}", font=dict(color=BLACK, size=13)),
+        scene=dict(
+            xaxis=dict(title="X", range=[0,127], gridcolor=GRAY_200, color=GRAY_500, backgroundcolor=WHITE),
+            yaxis=dict(title="Y", range=[0,127], gridcolor=GRAY_200, color=GRAY_500, backgroundcolor=WHITE),
+            zaxis=dict(title="Z", range=[0,127], gridcolor=GRAY_200, color=GRAY_500, backgroundcolor=WHITE),
+            aspectmode="cube", camera=dict(eye=dict(x=2.2, y=2.2, z=1.8)), bgcolor=WHITE,
+        ),
+        paper_bgcolor=WHITE, margin=dict(l=0, r=0, t=40, b=0),
+        uirevision="task1-volume",
+    )
+    return fig
+
+
 def fig_task1_image(step):
     nearest = min(T1_STEPS, key=lambda x: abs(x - step))
     path = os.path.join(OUTPUT_DIR, "task1", f"layer_composite_t{nearest:04d}.png")
@@ -78,6 +139,71 @@ def fig_task1_image(step):
         return html.Img(src=f"data:image/png;base64,{enc}",
                         style={"width": "100%", "display": "block"})
     return html.Div("Image not found", style={"color": "red", "padding": "40px"})
+
+
+def fig_t1_histogram(step, brush_range=None):
+    """Mini brushable histogram for Panel 1."""
+    h, e = np.histogram(ALL_100[step].ravel(), bins=64, range=DENSITY_RANGE)
+    ctr = (e[:-1]+e[1:])/2
+    clrs = [RED_500 if (brush_range and brush_range[0]<=c<=brush_range[1]) else GRAY_400 for c in ctr]
+
+    fig = go.Figure()
+    fig.add_trace(go.Bar(x=ctr, y=h, marker=dict(color=clrs, line_width=0),
+                         hovertemplate="ln(rho)=%{x:.3f}<br>count=%{y:,}<extra></extra>",
+                         showlegend=False))
+    shapes = []
+    if brush_range:
+        shapes.append(dict(type="rect", x0=brush_range[0], x1=brush_range[1],
+                           y0=0, y1=h.max()*1.05, fillcolor=RED_500, opacity=0.12,
+                           line_width=1, line_color=RED_500))
+    fig.update_layout(
+        title=dict(text=f"Density Histogram — t={step} (drag to brush)", font=dict(color=BLACK, size=11)),
+        xaxis=dict(title="ln(rho)", range=DENSITY_RANGE, gridcolor=GRAY_200, color=GRAY_500),
+        yaxis=dict(title="Count", gridcolor=GRAY_200, color=GRAY_500),
+        paper_bgcolor=WHITE, plot_bgcolor=WHITE, dragmode="select", selectdirection="h",
+        shapes=shapes, margin=dict(l=40, r=10, t=30, b=30), bargap=0, height=220,
+    )
+    return fig
+
+
+def fig_t1_sparklines(step, brush_range=None):
+    """Evolution sparklines: sigma + mean trends with current step marker + brush info."""
+    fig = make_subplots(rows=2, cols=1, shared_xaxes=True,
+                        subplot_titles=("Std sigma (clumpification)", "Mean ln(rho) (void expansion)"),
+                        vertical_spacing=0.25)
+
+    ts = np.arange(N_TIMESTEPS)
+    fig.add_trace(go.Scatter(x=ts, y=stds_100, mode="lines",
+                             line=dict(color=RED_500, width=1.8), name="sigma",
+                             hovertemplate="t=%{x}<br>sigma=%{y:.4f}"), row=1, col=1)
+    fig.add_trace(go.Scatter(x=[step], y=[stds_100[step]], mode="markers",
+                             marker=dict(color=BLUE_500, size=12, line=dict(color=BLACK, width=1.5)),
+                             name="current", showlegend=False), row=1, col=1)
+
+    fig.add_trace(go.Scatter(x=ts, y=means_100, mode="lines",
+                             line=dict(color=BLUE_500, width=1.8), name="mean",
+                             hovertemplate="t=%{x}<br>mean=%{y:.3f}"), row=2, col=1)
+    fig.add_trace(go.Scatter(x=[step], y=[means_100[step]], mode="markers",
+                             marker=dict(color=RED_500, size=12, line=dict(color=BLACK, width=1.5)),
+                             name="current", showlegend=False), row=2, col=1)
+
+    # Brush annotation
+    annotation_text = ""
+    if brush_range:
+        d = ALL_100[step].ravel()
+        n = int(((d>=brush_range[0])&(d<=brush_range[1])).sum())
+        pct = n/d.size*100
+        annotation_text = f"Brush [{brush_range[0]:.2f},{brush_range[1]:.2f}] → {n:,} voxels ({pct:.2f}%)"
+
+    fig.update_layout(
+        title=dict(text=annotation_text or "Drag in histogram to brush density range",
+                   font=dict(color=RED_500 if brush_range else GRAY_500, size=10)),
+        paper_bgcolor=WHITE, plot_bgcolor=WHITE,
+        margin=dict(l=45, r=10, t=35, b=25), height=220, showlegend=False,
+    )
+    fig.update_xaxes(gridcolor=GRAY_200, color=GRAY_400)
+    fig.update_yaxes(gridcolor=GRAY_200, color=GRAY_400)
+    return fig
 
 
 def fig_timewheel(step, rotation_deg=0):
@@ -332,22 +458,46 @@ def layout_task1_merged():
         html.Div([
             html.H1("Nyx Cosmic Density — Integrated Visual Explorer",
                     style={"color": BLACK, "fontSize": "20px", "margin": "5px 0 2px"}),
-            html.P("3D Isosurface Rendering + Cosmic TimeWheel — one slider drives both views | 51 frames, 100-step spiral",
+            html.P("3D Model + TimeWheel + Brush Histogram + Sparklines — one slider drives all",
                    style={"color": GRAY_500, "fontSize": "13px", "margin": "0 0 8px"}),
         ], style={"textAlign": "center"}),
 
-        # ── Row: 3D image (left) + TimeWheel (right) ──
+        # ── Row 1: 3D Volume rendering + TimeWheel ──
         html.Div([
             html.Div([
-                html.Div(id="t1-image-wrap", children=fig_task1_image(0),
-                         style={"border": "1px solid "+GRAY_200, "borderRadius": "4px", "overflow": "hidden"}),
+                dcc.Loading(
+                    dcc.Graph(id="t1-volume", figure=fig_t1_volume(0),
+                              config={"displaylogo": False},
+                              style={"height": "55vh"}),
+                    color=BLUE_500,
+                ),
             ], style={"flex": "1.2", "padding": "4px"}),
             html.Div([
                 dcc.Graph(id="t1-timewheel", figure=fig_timewheel(0),
-                          config={"displaylogo": False},
-                          style={"height": "48vh"}),
+                          config={"displaylogo": False}, style={"height": "48vh"}),
             ], style={"flex": "1", "padding": "4px"}),
         ], style={"display": "flex", "maxWidth": "1400px", "margin": "0 auto"}),
+
+        # ── Row 2: Brush histogram + Evolution sparklines ──
+        html.Div([
+            html.Div([
+                dcc.Graph(id="t1-histogram", config={"displaylogo": False,
+                          "modeBarButtonsToAdd": ["select2d"]},
+                          style={"height": "22vh"}),
+            ], style={"flex": "1", "padding": "4px"}),
+            html.Div([
+                dcc.Graph(id="t1-sparklines", config={"displaylogo": False},
+                          style={"height": "22vh"}),
+            ], style={"flex": "1", "padding": "4px"}),
+        ], style={"display": "flex", "maxWidth": "1400px", "margin": "0 auto"}),
+
+        # ── Rotation slider ──
+        html.Div([
+            html.Span("TimeWheel Rotation: ", style={"color": GRAY_500, "fontSize": "12px"}),
+            dcc.Slider(id="t1-rotation", min=0, max=360, value=0, step=5,
+                       marks={0:"0°",90:"90°",180:"180°",270:"270°",360:"360°"},
+                       tooltip={"placement":"bottom"}),
+        ], style={"maxWidth":"1400px","margin":"2px auto 0","display":"flex","gap":"10px","alignItems":"center"}),
 
         # ── Shared time slider ──
         html.Div([
@@ -361,24 +511,12 @@ def layout_task1_merged():
                       style={"fontSize": "24px", "fontWeight": "700", "color": BLUE_700, "marginLeft": "12px", "minWidth": "60px"}),
             dcc.Slider(id="t1-slider", min=0, max=99, value=0, step=1,
                        marks={0:"0",25:"25",50:"50",75:"75",99:"99"}, tooltip={"placement": "bottom"}),
-        ], style={"maxWidth": "1400px", "margin": "8px auto 0", "display": "flex", "gap": "6px", "alignItems": "center"}),
+        ], style={"maxWidth": "1400px", "margin": "4px auto 0", "display": "flex", "gap": "6px", "alignItems": "center"}),
 
-        # ── TimeWheel description ──
-        html.P("TimeWheel: spiral polar projection of 100 time steps. Color = epoch (blue early -> red late). "
-               "Marker size = density std deviation. Highlighted marker = current step.",
-               style={"textAlign": "center", "color": GRAY_400, "fontSize": "11px", "marginTop": "4px"}),
-
-        # ── TimeWheel rotation slider ──
-        html.Div([
-            html.Span("TimeWheel Rotation: ", style={"color": GRAY_500, "fontSize": "12px"}),
-            dcc.Slider(id="t1-rotation", min=0, max=360, value=0, step=5,
-                       marks={0:"0°",90:"90°",180:"180°",270:"270°",360:"360°"},
-                       tooltip={"placement":"bottom"}),
-        ], style={"maxWidth":"1400px","margin":"4px auto 0","display":"flex","gap":"10px","alignItems":"center"}),
-
-        html.P("Space = Play/Pause | Arrow keys = Step | Rotate TimeWheel with slider above",
+        html.P("Space = Play/Pause | Arrow keys = Step | Drag in histogram to brush density range",
                style={"textAlign": "center", "color": GRAY_400, "fontSize": "11px", "marginTop": "2px"}),
 
+        dcc.Store(id="t1-brush", data=None),
         dcc.Interval(id="t1-timer", interval=160, disabled=True),
     ])
 
@@ -454,21 +592,26 @@ def btn_style(color):
 # Task 1+5 callback — shared slider drives both 3D image + TimeWheel
 # ============================================================================
 @app.callback(
-    Output("t1-image-wrap", "children"),
+    Output("t1-volume", "figure"),
     Output("t1-step-label", "children"),
     Output("t1-step-label", "style"),
     Output("t1-slider", "value"),
     Output("t1-step", "data"),
     Output("t1-timewheel", "figure"),
+    Output("t1-histogram", "figure"),
+    Output("t1-sparklines", "figure"),
+    Output("t1-brush", "data"),
     Input("t1-slider", "value"),
     Input("t1-rotation", "value"),
+    Input("t1-histogram", "selectedData"),
     Input("t1-bt0", "n_clicks"), Input("t1-bt99", "n_clicks"),
     Input("t1-prev", "n_clicks"), Input("t1-next", "n_clicks"),
     Input("t1-timer", "n_intervals"),
     State("t1-step", "data"),
+    State("t1-brush", "data"),
     prevent_initial_call=False,
 )
-def t1_update(slider_val, rotation_deg, bt0, bt99, prev, nxt, timer_n, cur_step):
+def t1_update(slider_val, rotation_deg, sel_data, bt0, bt99, prev, nxt, timer_n, cur_step, brush_data):
     trig = ctx.triggered_id if ctx.triggered else ""
     if cur_step is None: cur_step = 0
     if rotation_deg is None: rotation_deg = 0
@@ -480,12 +623,19 @@ def t1_update(slider_val, rotation_deg, bt0, bt99, prev, nxt, timer_n, cur_step)
     elif trig == "t1-slider": cur_step = slider_val if slider_val is not None else 0
     elif trig == "t1-timer": cur_step = (cur_step + 1) % 100
 
+    if trig == "t1-histogram" and sel_data and "range" in sel_data:
+        brush_data = [sel_data["range"]["x"][0], sel_data["range"]["x"][1]]
+
     style = {"fontSize": "24px", "fontWeight": "700", "color": get_time_color(cur_step),
              "marginLeft": "12px", "minWidth": "60px"}
 
+    vol_fig = fig_t1_volume(cur_step)
     tw_fig = fig_timewheel(cur_step, rotation_deg)
+    hist_fig = fig_t1_histogram(cur_step, brush_data)
+    spark_fig = fig_t1_sparklines(cur_step, brush_data)
 
-    return fig_task1_image(cur_step), f"t = {cur_step}", style, cur_step, cur_step, tw_fig
+    return (vol_fig, f"t = {cur_step}", style, cur_step, cur_step,
+            tw_fig, hist_fig, spark_fig, brush_data)
 
 
 @app.callback(Output("t1-timer", "disabled"), Input("t1-play", "n_clicks"),
@@ -526,7 +676,7 @@ def t4_update(sel_data, bt0, bt25, bt50, bt75, bt99, cur_step):
 # ============================================================================
 if __name__ == "__main__":
     print("="*60)
-    print("Nyx Dashboard: http://127.0.0.1:9050")
+    print("Nyx Dashboard: http://127.0.0.1:9055")
     print("  4 tabs: 3D+TimeWheel | Evolution | Histogram | Brushing")
     print("="*60)
-    app.run(debug=False, host="127.0.0.1", port=9050)
+    app.run(debug=False, host="127.0.0.1", port=9055)
