@@ -29,6 +29,23 @@ TW_MEANS = np.array([ALL_100[t].mean() for t in range(N_TIMESTEPS)])
 TW_STDS  = np.array([ALL_100[t].std()  for t in range(N_TIMESTEPS)])
 TW_MINS  = np.array([ALL_100[t].min()  for t in range(N_TIMESTEPS)])
 TW_MAXS  = np.array([ALL_100[t].max()  for t in range(N_TIMESTEPS)])
+
+# Pre-compute 10 radial metrics for all steps
+_TW_RAW = np.zeros((N_TIMESTEPS, 10))
+for t in range(N_TIMESTEPS):
+    d = ALL_100[t].ravel()
+    _TW_RAW[t] = [
+        (d < 8.5).sum() / d.size * 100,  # Void%
+        (d > 12.0).sum() / d.size * 100, # Peak%
+        np.mean((d-d.mean())**4)/d.std()**4 - 3,  # Kurtosis
+        np.mean((d-d.mean())**3)/d.std()**3,       # Skewness
+        np.percentile(d,75)-np.percentile(d,25),    # IQR
+        d.std(), d.mean(), d.min(), d.max(),        # Std, Mean, Min, Max
+        np.percentile(d,99)-np.percentile(d,1),     # Spread
+    ]
+_TW_VMIN = _TW_RAW.min(axis=0); _TW_VMAX = _TW_RAW.max(axis=0)
+_TW_VRNG = _TW_VMAX - _TW_VMIN; _TW_VRNG[_TW_VRNG==0] = 1
+TW_NORMED = (_TW_RAW - _TW_VMIN) / _TW_VRNG * 8 + 1  # [1, 9] normalized
 TW_THETA = np.linspace(0, 10 * np.pi, N_TIMESTEPS)
 TW_RADIUS = np.linspace(2, 10, N_TIMESTEPS)
 
@@ -63,64 +80,121 @@ def fig_task1_image(step):
     return html.Div("Image not found", style={"color": "red", "padding": "40px"})
 
 
-def fig_timewheel(step):
-    """Build interactive Plotly polar TimeWheel — highlights current step."""
+def fig_timewheel(step, rotation_deg=0):
+    """
+    Radial Statistical Evolution View (fig5a_timewheel_full replica).
+    Center time axis + peripheral metric axes + chord-like fiber bundles.
+    """
+    # 10 metrics arranged around circle
+    metrics = [
+        ("Void Frac %",    0),
+        ("Peak Frac %",    1),
+        ("Exc.Kurtosis g2",2),
+        ("Skewness g1",    3),
+        ("IQR",            4),
+        ("Std sigma",      5),
+        ("Mean ln(rho)",   6),
+        ("Min ln(rho)",    7),
+        ("Max ln(rho)",    8),
+        ("P99-P01 Spread", 9),
+    ]
+    N = len(metrics)
+    rot = np.radians(rotation_deg)
+
+    # Pre-computed normalized metric values
+    normed = TW_NORMED  # (100, 10), range [1, 9]
+
     fig = go.Figure()
 
-    # Spiral path (all 100 steps)
-    fig.add_trace(go.Scatterpolar(
-        r=TW_RADIUS, theta=np.degrees(TW_THETA),
-        mode="lines", line=dict(color=GRAY_300, width=1.5),
-        name="Evolution path", hoverinfo="skip",
+    # ── Metric axes (radial spokes) ──
+    for i, (name, _) in enumerate(metrics):
+        angle = 2 * np.pi * i / N + rot
+        # Axis line from center to edge
+        fig.add_trace(go.Scatter(
+            x=[0, 10 * np.cos(angle)], y=[0, 10 * np.sin(angle)],
+            mode="lines",
+            line=dict(color=GRAY_400, width=3),
+            hoverinfo="skip", showlegend=False,
+        ))
+        # Label at end
+        fig.add_trace(go.Scatter(
+            x=[11.5 * np.cos(angle)], y=[11.5 * np.sin(angle)],
+            mode="text",
+            text=[name],
+            textfont=dict(color=BLACK, size=11, family="Arial"),
+            hoverinfo="skip", showlegend=False,
+        ))
+        # Tick marks
+        for t_val in [2, 4, 6, 8]:
+            fx = t_val * np.cos(angle); fy = t_val * np.sin(angle)
+            fig.add_trace(go.Scatter(
+                x=[fx-0.05*np.cos(angle+np.pi/2), fx+0.05*np.cos(angle+np.pi/2)],
+                y=[fy-0.05*np.sin(angle+np.pi/2), fy+0.05*np.sin(angle+np.pi/2)],
+                mode="lines", line=dict(color=GRAY_300, width=0.5),
+                hoverinfo="skip", showlegend=False,
+            ))
+
+    # ── Fiber bundles: all 100 time steps as semi-transparent lines ──
+    for t in range(N_TIMESTEPS):
+        color = get_time_color(t)
+        alpha_val = 0.28 if t != step else 1.0
+        lw = 1.8 if t != step else 4.0
+        px, py = [], []
+        for i in range(N):
+            angle = 2 * np.pi * i / N + rot
+            r = normed[t, i]
+            px.append(r * np.cos(angle)); py.append(r * np.sin(angle))
+        px.append(px[0]); py.append(py[0])  # close polygon
+        fig.add_trace(go.Scatter(
+            x=px, y=py, mode="lines",
+            line=dict(color=color, width=lw),
+            opacity=alpha_val,
+            hoverinfo="skip", showlegend=False,
+        ))
+
+    # ── Central time axis (horizontal) ──
+    fig.add_trace(go.Scatter(
+        x=[-8, 8], y=[0, 0], mode="lines",
+        line=dict(color=GRAY_500, width=3.5),
+        hoverinfo="skip", showlegend=False,
+    ))
+    tick_positions = [0, 25, 50, 75, 99]
+    for ts in tick_positions:
+        tx = -7 + (ts / 99) * 14
+        fig.add_trace(go.Scatter(
+            x=[tx], y=[0], mode="markers+text",
+            marker=dict(size=5, color=GRAY_500),
+            text=[f"t={ts}"], textposition="top center",
+            textfont=dict(size=8, color=GRAY_500),
+            hoverinfo="skip", showlegend=False,
+        ))
+    # Current step indicator on time axis
+    cx = -7 + (step / 99) * 14
+    fig.add_trace(go.Scatter(
+        x=[cx], y=[0], mode="markers",
+        marker=dict(size=14, color=get_time_color(step), line=dict(color=BLACK, width=2)),
+        hoverinfo="skip", showlegend=False,
     ))
 
-    # All step markers
-    colors = [get_time_color(t) for t in range(N_TIMESTEPS)]
-    sizes = [18 + TW_STDS[t] * 50 for t in range(N_TIMESTEPS)]
-    fig.add_trace(go.Scatterpolar(
-        r=TW_RADIUS, theta=np.degrees(TW_THETA),
-        mode="markers",
-        marker=dict(color=colors, size=sizes, opacity=0.7,
-                    line=dict(color="white", width=0.5)),
-        text=[f"t={t}<br>mean={TW_MEANS[t]:.3f}<br>std={TW_STDS[t]:.4f}"
-              for t in range(N_TIMESTEPS)],
-        hoverinfo="text", name="All steps",
-    ))
-
-    # Highlight current step
-    fig.add_trace(go.Scatterpolar(
-        r=[TW_RADIUS[step]], theta=[np.degrees(TW_THETA[step])],
-        mode="markers+text",
-        marker=dict(color=get_time_color(step), size=28,
-                    line=dict(color=BLACK, width=2.5)),
-        text=[f"  t={step}  "],
-        textfont=dict(color=BLACK, size=13, family="Arial"),
-        textposition="top center",
-        hoverinfo="skip", name="Current",
-        showlegend=False,
-    ))
-
-    # Small inset — density bar
-    fig.add_trace(go.Barpolar(
-        r=[0.3],
-        theta=[180],
-        width=[np.rad2deg(0.3)],
-        marker=dict(color=get_time_color(step)),
-        base=0, showlegend=False,
+    # ── Decagon frame ──
+    frame_x, frame_y = [], []
+    for i in range(N+1):
+        angle = 2 * np.pi * (i % N) / N + rot
+        frame_x.append(10 * np.cos(angle)); frame_y.append(10 * np.sin(angle))
+    fig.add_trace(go.Scatter(
+        x=frame_x, y=frame_y, mode="lines",
+        line=dict(color=GRAY_300, width=1.2, dash="dot"),
+        hoverinfo="skip", showlegend=False,
     ))
 
     fig.update_layout(
-        title=dict(text=f"Cosmic TimeWheel — t={step} (blue=early, red=late, size=std)",
-                   font=dict(color=BLACK, size=13)),
-        polar=dict(
-            radialaxis=dict(visible=False, range=[0, 12]),
-            angularaxis=dict(visible=False),
-            bgcolor=WHITE,
-        ),
-        paper_bgcolor=WHITE,
-        margin=dict(l=20, r=20, t=40, b=20),
-        height=480,
-        showlegend=False,
+        title=dict(text=f"Radial Statistical Evolution — t={step} (rot={rotation_deg}°)",
+                   font=dict(color=BLACK, size=14)),
+        xaxis=dict(visible=False, range=[-13, 13]),
+        yaxis=dict(visible=False, range=[-13, 13], scaleanchor="x"),
+        paper_bgcolor=WHITE, plot_bgcolor=WHITE,
+        margin=dict(l=5, r=5, t=40, b=5),
+        height=550,
     )
     return fig
 
@@ -294,7 +368,15 @@ def layout_task1_merged():
                "Marker size = density std deviation. Highlighted marker = current step.",
                style={"textAlign": "center", "color": GRAY_400, "fontSize": "11px", "marginTop": "4px"}),
 
-        html.P("Space = Play/Pause | Arrow keys = Step",
+        # ── TimeWheel rotation slider ──
+        html.Div([
+            html.Span("TimeWheel Rotation: ", style={"color": GRAY_500, "fontSize": "12px"}),
+            dcc.Slider(id="t1-rotation", min=0, max=360, value=0, step=5,
+                       marks={0:"0°",90:"90°",180:"180°",270:"270°",360:"360°"},
+                       tooltip={"placement":"bottom"}),
+        ], style={"maxWidth":"1400px","margin":"4px auto 0","display":"flex","gap":"10px","alignItems":"center"}),
+
+        html.P("Space = Play/Pause | Arrow keys = Step | Rotate TimeWheel with slider above",
                style={"textAlign": "center", "color": GRAY_400, "fontSize": "11px", "marginTop": "2px"}),
 
         dcc.Interval(id="t1-timer", interval=160, disabled=True),
@@ -379,15 +461,17 @@ def btn_style(color):
     Output("t1-step", "data"),
     Output("t1-timewheel", "figure"),
     Input("t1-slider", "value"),
+    Input("t1-rotation", "value"),
     Input("t1-bt0", "n_clicks"), Input("t1-bt99", "n_clicks"),
     Input("t1-prev", "n_clicks"), Input("t1-next", "n_clicks"),
     Input("t1-timer", "n_intervals"),
     State("t1-step", "data"),
     prevent_initial_call=False,
 )
-def t1_update(slider_val, bt0, bt99, prev, nxt, timer_n, cur_step):
+def t1_update(slider_val, rotation_deg, bt0, bt99, prev, nxt, timer_n, cur_step):
     trig = ctx.triggered_id if ctx.triggered else ""
     if cur_step is None: cur_step = 0
+    if rotation_deg is None: rotation_deg = 0
 
     step_map = {"t1-bt0": 0, "t1-bt99": 99}
     if trig in step_map: cur_step = step_map[trig]
@@ -399,7 +483,7 @@ def t1_update(slider_val, bt0, bt99, prev, nxt, timer_n, cur_step):
     style = {"fontSize": "24px", "fontWeight": "700", "color": get_time_color(cur_step),
              "marginLeft": "12px", "minWidth": "60px"}
 
-    tw_fig = fig_timewheel(cur_step)
+    tw_fig = fig_timewheel(cur_step, rotation_deg)
 
     return fig_task1_image(cur_step), f"t = {cur_step}", style, cur_step, cur_step, tw_fig
 
@@ -442,7 +526,7 @@ def t4_update(sel_data, bt0, bt25, bt50, bt75, bt99, cur_step):
 # ============================================================================
 if __name__ == "__main__":
     print("="*60)
-    print("Nyx Dashboard: http://127.0.0.1:8051")
+    print("Nyx Dashboard: http://127.0.0.1:9050")
     print("  4 tabs: 3D+TimeWheel | Evolution | Histogram | Brushing")
     print("="*60)
-    app.run(debug=False, host="127.0.0.1", port=8051)
+    app.run(debug=False, host="127.0.0.1", port=9050)
