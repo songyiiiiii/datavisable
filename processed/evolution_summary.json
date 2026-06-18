@@ -1,0 +1,18 @@
+{
+  "description": "Evolution metrics from t=0 to t=99",
+  "sigma_change_pct": 15.41,
+  "iqr_change_pct": 16.74,
+  "spread_change_pct": 15.09,
+  "min_change": -0.2311,
+  "max_change": 0.6061,
+  "void_frac_8.5_growth": 9.7,
+  "skewness_t0": 0.7162,
+  "skewness_t99": 0.7183,
+  "kurtosis_t0": 1.6295,
+  "kurtosis_t99": 1.445,
+  "three_phase_model": {
+    "phase_I_linear": "t=0-30:  narrow peak, uniform derivative, initial instability",
+    "phase_II_accel": "t=30-70: peak broadening, tail growth, nonlinear collapse",
+    "phase_III_asymp": "t=70-99: broad peak, decelerating derivative, quasi-equilibrium"
+  }
+}
