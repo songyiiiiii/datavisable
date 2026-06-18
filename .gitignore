@@ -1,0 +1,31 @@
+# Nyx raw data (800MB — too large for GitHub)
+Nyx/
+
+# Generated output images (100+ MB)
+output/task1/*.png
+output/task1/*.mp4
+output/task2/*.png
+output/task3/*.png
+output/task4/*.png
+output/task5/*.png
+output/icicle_dendro/*.png
+output/report_tables/*.png
+output/frames/
+output/*.mp4
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# IDE
+.vscode/
+.idea/
+
+# Virtual env
+.venv/
+venv/
+
+# OS
+.DS_Store
+Thumbs.db

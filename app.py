@@ -1,0 +1,448 @@
+# -*- coding: utf-8 -*-
+"""
+Nyx Cosmic Density — Unified Visual Analytics Dashboard
+=========================================================
+Single Dash app: Task 1(+5) 3D + TimeWheel | Task 2 Evolution | Task 3 Histogram | Task 4 Brushing
+Run: python app.py -> http://127.0.0.1:8051
+"""
+
+import numpy as np
+import dash
+from dash import dcc, html, Input, Output, State, ctx
+import plotly.graph_objects as go
+import base64, os
+
+from config import *
+from data_loader import load_timestep
+
+# ============================================================================
+# Preload — all 100 steps for TimeWheel + 51-frame Task 1
+# ============================================================================
+print("Preloading all 100 time steps for TimeWheel...")
+ALL_100 = {}
+for i in range(N_TIMESTEPS):
+    ALL_100[i] = load_timestep(i)
+    if (i+1) % 25 == 0: print(f"  {i+1}/100")
+
+# TimeWheel pre-computed data
+TW_MEANS = np.array([ALL_100[t].mean() for t in range(N_TIMESTEPS)])
+TW_STDS  = np.array([ALL_100[t].std()  for t in range(N_TIMESTEPS)])
+TW_MINS  = np.array([ALL_100[t].min()  for t in range(N_TIMESTEPS)])
+TW_MAXS  = np.array([ALL_100[t].max()  for t in range(N_TIMESTEPS)])
+TW_THETA = np.linspace(0, 10 * np.pi, N_TIMESTEPS)
+TW_RADIUS = np.linspace(2, 10, N_TIMESTEPS)
+
+# Task 4 data (5 key steps)
+T4_STEPS = REPRESENTATIVE_STEPS
+SUB4 = {}
+HIST4 = {}
+for ts in T4_STEPS:
+    d = ALL_100[ts][::4, ::4, ::4]
+    SUB4[ts] = np.ascontiguousarray(np.transpose(d, (2, 1, 0)))
+    h, e = np.histogram(ALL_100[ts].ravel(), bins=128, range=DENSITY_RANGE)
+    HIST4[ts] = {"counts": h, "edges": e, "centers": (e[:-1]+e[1:])/2}
+
+print("Ready.\n")
+
+# Task 1 frame steps
+T1_STEPS = list(range(0, 100, 2))
+if 99 not in T1_STEPS: T1_STEPS.append(99)
+T1_STEPS = sorted(set(T1_STEPS))
+
+# ============================================================================
+# Figure builders
+# ============================================================================
+def fig_task1_image(step):
+    nearest = min(T1_STEPS, key=lambda x: abs(x - step))
+    path = os.path.join(OUTPUT_DIR, "task1", f"layer_composite_t{nearest:04d}.png")
+    if os.path.exists(path):
+        with open(path, "rb") as f:
+            enc = base64.b64encode(f.read()).decode()
+        return html.Img(src=f"data:image/png;base64,{enc}",
+                        style={"width": "100%", "display": "block"})
+    return html.Div("Image not found", style={"color": "red", "padding": "40px"})
+
+
+def fig_timewheel(step):
+    """Build interactive Plotly polar TimeWheel — highlights current step."""
+    fig = go.Figure()
+
+    # Spiral path (all 100 steps)
+    fig.add_trace(go.Scatterpolar(
+        r=TW_RADIUS, theta=np.degrees(TW_THETA),
+        mode="lines", line=dict(color=GRAY_300, width=1.5),
+        name="Evolution path", hoverinfo="skip",
+    ))
+
+    # All step markers
+    colors = [get_time_color(t) for t in range(N_TIMESTEPS)]
+    sizes = [18 + TW_STDS[t] * 50 for t in range(N_TIMESTEPS)]
+    fig.add_trace(go.Scatterpolar(
+        r=TW_RADIUS, theta=np.degrees(TW_THETA),
+        mode="markers",
+        marker=dict(color=colors, size=sizes, opacity=0.7,
+                    line=dict(color="white", width=0.5)),
+        text=[f"t={t}<br>mean={TW_MEANS[t]:.3f}<br>std={TW_STDS[t]:.4f}"
+              for t in range(N_TIMESTEPS)],
+        hoverinfo="text", name="All steps",
+    ))
+
+    # Highlight current step
+    fig.add_trace(go.Scatterpolar(
+        r=[TW_RADIUS[step]], theta=[np.degrees(TW_THETA[step])],
+        mode="markers+text",
+        marker=dict(color=get_time_color(step), size=28,
+                    line=dict(color=BLACK, width=2.5)),
+        text=[f"  t={step}  "],
+        textfont=dict(color=BLACK, size=13, family="Arial"),
+        textposition="top center",
+        hoverinfo="skip", name="Current",
+        showlegend=False,
+    ))
+
+    # Small inset — density bar
+    fig.add_trace(go.Barpolar(
+        r=[0.3],
+        theta=[180],
+        width=[np.rad2deg(0.3)],
+        marker=dict(color=get_time_color(step)),
+        base=0, showlegend=False,
+    ))
+
+    fig.update_layout(
+        title=dict(text=f"Cosmic TimeWheel — t={step} (blue=early, red=late, size=std)",
+                   font=dict(color=BLACK, size=13)),
+        polar=dict(
+            radialaxis=dict(visible=False, range=[0, 12]),
+            angularaxis=dict(visible=False),
+            bgcolor=WHITE,
+        ),
+        paper_bgcolor=WHITE,
+        margin=dict(l=20, r=20, t=40, b=20),
+        height=480,
+        showlegend=False,
+    )
+    return fig
+
+
+def fig_task4_histogram(step, sel_range=None):
+    hc = HIST4[step]
+    counts, centers = hc["counts"], hc["centers"]
+    colors = [RED_500 if sel_range and sel_range[0]<=c<=sel_range[1] else GRAY_400
+              for c in centers]
+    fig = go.Figure()
+    fig.add_trace(go.Bar(x=centers, y=counts, marker=dict(color=colors, line_width=0),
+                         hovertemplate="ln(rho)=%{x:.3f}<br>count=%{y:,}<extra></extra>",
+                         showlegend=False))
+    shapes = []
+    if sel_range:
+        shapes.append(dict(type="rect", x0=sel_range[0], x1=sel_range[1],
+                           y0=0, y1=counts.max()*1.05,
+                           fillcolor=RED_500, opacity=0.12, line_width=1, line_color=RED_500))
+    fig.update_layout(
+        title=dict(text=f"Density Histogram — t={step}  (drag to select range)", font=dict(color=BLACK, size=12)),
+        xaxis=dict(title="ln(rho)", range=DENSITY_RANGE, gridcolor=GRAY_200, color=GRAY_500),
+        yaxis=dict(title="Count", type="log", gridcolor=GRAY_200, color=GRAY_500),
+        paper_bgcolor=WHITE, plot_bgcolor=WHITE, dragmode="select", selectdirection="h",
+        shapes=shapes, margin=dict(l=45, r=15, t=35, b=35), bargap=0,
+    )
+    return fig
+
+
+def fig_task4_scatter(step, sel_range=None, max_pts=6000):
+    d3 = SUB4[step]
+    if sel_range:
+        lo, hi = sel_range
+        mask = (d3 >= lo) & (d3 <= hi)
+    else:
+        mask = np.ones_like(d3, dtype=bool)
+    idx_all = np.argwhere(mask)
+    vals_all = d3[mask]
+    n_total = len(vals_all)
+    if n_total == 0:
+        return go.Figure(), 0
+    if n_total > max_pts:
+        rng = np.random.default_rng(42)
+        si = rng.choice(n_total, size=max_pts, replace=False)
+        idx_all, vals_all = idx_all[si], vals_all[si]
+    px, py, pz = idx_all[:,0]*4, idx_all[:,1]*4, idx_all[:,2]*4
+    title = f"3D View — t={step}"
+    if sel_range:
+        title += f" | ln(rho) in [{sel_range[0]:.2f}, {sel_range[1]:.2f}] | {n_total:,} voxels"
+    fig = go.Figure()
+    fig.add_trace(go.Scatter3d(
+        x=px, y=py, z=pz, mode="markers",
+        marker=dict(size=2.5, color=vals_all,
+                    colorscale=[[0,BLUE_700],[0.35,BLUE_300],[0.5,GRAY_400],[0.65,RED_300],[1,RED_500]],
+                    cmin=7.5, cmax=15, opacity=0.55,
+                    colorbar=dict(title=dict(text="ln(rho)", font=dict(color=GRAY_600)),
+                                  tickfont=dict(color=GRAY_500), len=0.55, thickness=12)),
+        showlegend=False,
+    ))
+    fig.update_layout(
+        title=dict(text=title, font=dict(color=BLACK, size=12)),
+        scene=dict(xaxis=dict(title="X",range=[0,127],gridcolor=GRAY_200,color=GRAY_500,backgroundcolor=WHITE),
+                   yaxis=dict(title="Y",range=[0,127],gridcolor=GRAY_200,color=GRAY_500,backgroundcolor=WHITE),
+                   zaxis=dict(title="Z",range=[0,127],gridcolor=GRAY_200,color=GRAY_500,backgroundcolor=WHITE),
+                   aspectmode="cube", camera=dict(eye=dict(x=2.0,y=2.0,z=1.5))),
+        paper_bgcolor=WHITE, margin=dict(l=0,r=0,t=35,b=0), uirevision=True,
+    )
+    return fig, n_total
+
+
+# ============================================================================
+# App
+# ============================================================================
+app = dash.Dash(__name__, title="Nyx Visual Analytics", suppress_callback_exceptions=True)
+server = app.server
+
+TAB_STYLE = {"padding": "10px 20px", "border": "none", "background": "none",
+             "fontSize": "14px", "fontWeight": "600", "cursor": "pointer",
+             "color": GRAY_400, "borderBottom": "2px solid transparent"}
+TAB_ACTIVE = {**TAB_STYLE, "color": BLUE_500, "borderBottomColor": BLUE_500}
+
+BTN = {"padding":"5px 12px","border":"1px solid "+GRAY_300,"borderRadius":"4px",
+       "background":"white","cursor":"pointer","fontSize":"13px","color":GRAY_700}
+
+app.layout = html.Div([
+    dcc.Tabs(id="main-tabs", value="task1", children=[
+        dcc.Tab(label="Task 1+5 — 3D View + TimeWheel", value="task1", style=TAB_STYLE, selected_style=TAB_ACTIVE),
+        dcc.Tab(label="Task 2 — Evolution", value="task2", style=TAB_STYLE, selected_style=TAB_ACTIVE),
+        dcc.Tab(label="Task 3 — Histogram Tracking", value="task3", style=TAB_STYLE, selected_style=TAB_ACTIVE),
+        dcc.Tab(label="Task 4 — Brushing Dashboard", value="task4", style=TAB_STYLE, selected_style=TAB_ACTIVE),
+    ], style={"borderBottom": "1px solid "+GRAY_200, "padding": "0 10px"}),
+    html.Div(id="tab-content", style={"padding": "10px"}),
+    dcc.Store(id="t1-step", data=0),
+    dcc.Store(id="t4-step", data=99),
+    dcc.Store(id="t4-range", data=None),
+], style={"backgroundColor": WHITE, "minHeight": "100vh", "fontFamily": "Arial,sans-serif"})
+
+
+# ============================================================================
+# Tab switching
+# ============================================================================
+@app.callback(Output("tab-content", "children"), Input("main-tabs", "value"))
+def switch_tab(tab):
+    if tab == "task1": return layout_task1_merged()
+    elif tab == "task2": return layout_static_figs("task2", "Task 2 — Cosmic Density Evolution Analysis", [
+        ("fig2a_stats_dashboard.png", "Fig 2a: Four-panel statistical evolution dashboard."),
+        ("fig2b_violin_evolution.png", "Fig 2b: Violin plot — density distribution at 5-step intervals."),
+        ("fig2c_histogram_compare.png", "Fig 2c: t=0 vs t=99 histogram overlay."),
+        ("fig2d_joint_dist.png", "Fig 2d: Hexbin joint distribution of voxel densities."),
+        ("fig2e_clumpification.png", "Fig 2e: Clumpification quantification metrics."),
+    ], summary=(
+        "Over 100 time steps, sigma increased +15.4%, IQR grew +16.7%, "
+        "P99-P01 spread widened +15.1%. Voids deepen, peaks intensify — "
+        "quantifying irreversible clumpification driven by dark matter gravity."
+    ))
+    elif tab == "task3": return layout_static_figs("task3", "Task 3 — Histogram Temporal Tracking", [
+        ("fig3a_heatmap.png", "Fig 3a: Density distribution evolution heatmap across 100 steps."),
+        ("fig3b_peak_width.png", "Fig 3b: Distribution peak and FWHM tracking (+14.3% width growth)."),
+        ("fig3c_fractions.png", "Fig 3c: Void/peak volume fractions (void fraction grew 10x)."),
+        ("fig3d_derivative.png", "Fig 3d: Temporal derivative — mass transfer to both tails."),
+        ("fig3e_ridge.png", "Fig 3e: Ridge plot of 11 key time steps."),
+    ], summary=(
+        "Void fraction (ln<8.5) grew from 0.31% to 2.99%. "
+        "Mode shifted 9.404->9.229. FWHM +14.3%. "
+        "Systematic mass transfer from mid-densities toward both tails."
+    ))
+    elif tab == "task4": return layout_task4()
+    return html.Div()
+
+
+# ============================================================================
+# Layout — Task 1+5 merged: 3D render + TimeWheel, shared slider
+# ============================================================================
+def layout_task1_merged():
+    return html.Div([
+        html.Div([
+            html.H1("Nyx Cosmic Density — Integrated Visual Explorer",
+                    style={"color": BLACK, "fontSize": "20px", "margin": "5px 0 2px"}),
+            html.P("3D Isosurface Rendering + Cosmic TimeWheel — one slider drives both views | 51 frames, 100-step spiral",
+                   style={"color": GRAY_500, "fontSize": "13px", "margin": "0 0 8px"}),
+        ], style={"textAlign": "center"}),
+
+        # ── Row: 3D image (left) + TimeWheel (right) ──
+        html.Div([
+            html.Div([
+                html.Div(id="t1-image-wrap", children=fig_task1_image(0),
+                         style={"border": "1px solid "+GRAY_200, "borderRadius": "4px", "overflow": "hidden"}),
+            ], style={"flex": "1.2", "padding": "4px"}),
+            html.Div([
+                dcc.Graph(id="t1-timewheel", figure=fig_timewheel(0),
+                          config={"displaylogo": False},
+                          style={"height": "48vh"}),
+            ], style={"flex": "1", "padding": "4px"}),
+        ], style={"display": "flex", "maxWidth": "1400px", "margin": "0 auto"}),
+
+        # ── Shared time slider ──
+        html.Div([
+            html.Button("|<< 0", id="t1-bt0", n_clicks=0, style=BTN),
+            html.Button("<", id="t1-prev", n_clicks=0, style=BTN),
+            html.Button("Play", id="t1-play", n_clicks=0,
+                        style={**BTN, "background": BLUE_500, "color": "white", "borderColor": BLUE_500, "fontWeight": "600"}),
+            html.Button(">", id="t1-next", n_clicks=0, style=BTN),
+            html.Button("99 >>|", id="t1-bt99", n_clicks=0, style=BTN),
+            html.Span("t = 0", id="t1-step-label",
+                      style={"fontSize": "24px", "fontWeight": "700", "color": BLUE_700, "marginLeft": "12px", "minWidth": "60px"}),
+            dcc.Slider(id="t1-slider", min=0, max=99, value=0, step=1,
+                       marks={0:"0",25:"25",50:"50",75:"75",99:"99"}, tooltip={"placement": "bottom"}),
+        ], style={"maxWidth": "1400px", "margin": "8px auto 0", "display": "flex", "gap": "6px", "alignItems": "center"}),
+
+        # ── TimeWheel description ──
+        html.P("TimeWheel: spiral polar projection of 100 time steps. Color = epoch (blue early -> red late). "
+               "Marker size = density std deviation. Highlighted marker = current step.",
+               style={"textAlign": "center", "color": GRAY_400, "fontSize": "11px", "marginTop": "4px"}),
+
+        html.P("Space = Play/Pause | Arrow keys = Step",
+               style={"textAlign": "center", "color": GRAY_400, "fontSize": "11px", "marginTop": "2px"}),
+
+        dcc.Interval(id="t1-timer", interval=160, disabled=True),
+    ])
+
+
+def layout_static_figs(folder, title, figs, summary=None):
+    cards = []
+    for fname, caption in figs:
+        path = os.path.join(OUTPUT_DIR, folder, fname)
+        if os.path.exists(path):
+            with open(path, "rb") as f:
+                enc = base64.b64encode(f.read()).decode()
+            cards.append(html.Div([
+                html.Img(src=f"data:image/png;base64,{enc}", style={"width":"100%","display":"block"}),
+                html.Div(caption, style={"padding":"10px 14px","fontSize":"13px","color":GRAY_600,
+                         "borderTop":"1px solid "+GRAY_200,"lineHeight":"1.6"}),
+            ], style={"border":"1px solid "+GRAY_200,"borderRadius":"6px","overflow":"hidden",
+                      "marginBottom":"16px","background":"white"}))
+    summary_block = None
+    if summary:
+        summary_block = html.Div(summary, style={
+            "maxWidth":"1100px","margin":"0 auto 16px","padding":"14px 18px",
+            "fontSize":"14px","color":GRAY_700,"lineHeight":"1.8",
+            "background":GRAY_100,"borderRadius":"6px","borderLeft":"4px solid "+BLUE_500})
+    return html.Div([
+        html.H2(title, style={"color":BLACK,"fontSize":"20px","textAlign":"center","margin":"8px 0 12px","fontWeight":"700"}),
+        summary_block if summary_block else None,
+        html.Div(cards, style={"maxWidth":"1100px","margin":"0 auto"}),
+    ])
+
+
+def layout_task4():
+    return html.Div([
+        html.H2("Phase-Space Brushing Linked-View Dashboard",
+                style={"color":BLACK,"fontSize":"20px","textAlign":"center","margin":"8px 0 2px","fontWeight":"700"}),
+        html.P("Select a density range in the histogram -> 3D view shows matching voxels",
+               style={"color":GRAY_500,"fontSize":"13px","textAlign":"center","margin":"0 0 8px"}),
+        html.Div(
+            "Brushing the top 1% reveals cluster nodes; bottom 5% reveals voids. "
+            "At t=0, high-density voxels are scattered; by t=99, gravitational collapse organized them into compact filamentary nodes.",
+            style={"maxWidth":"1100px","margin":"0 auto 12px","padding":"14px 18px",
+                   "fontSize":"14px","color":GRAY_700,"lineHeight":"1.8",
+                   "background":GRAY_100,"borderRadius":"6px","borderLeft":"4px solid "+RED_500}),
+        html.Div([
+            html.Label("Time Step:", style={"fontWeight":"600","color":GRAY_600,"marginRight":"8px"}),
+            html.Button("t=0", id="t4-bt0", n_clicks=0, style=btn_style(BLUE_700)),
+            html.Button("t=25", id="t4-bt25", n_clicks=0, style=btn_style(BLUE_300)),
+            html.Button("t=50", id="t4-bt50", n_clicks=0, style=btn_style(GRAY_500)),
+            html.Button("t=75", id="t4-bt75", n_clicks=0, style=btn_style(RED_300)),
+            html.Button("t=99", id="t4-bt99", n_clicks=0, style=btn_style(RED_500)),
+            html.Span("t = 99", id="t4-step-indicator",
+                      style={"marginLeft":"12px","fontSize":"18px","fontWeight":"700","color":RED_500}),
+        ], style={"display":"flex","alignItems":"center","gap":"5px","padding":"6px 15px","borderBottom":"1px solid "+GRAY_200}),
+        html.Div([
+            html.Div([
+                dcc.Graph(id="t4-histogram", config={"displaylogo":False,"modeBarButtonsToAdd":["select2d"]},
+                          style={"height":"42vh"}),
+                html.Div(id="t4-stats", style={"padding":"6px 12px","fontSize":"12px","color":GRAY_600,
+                          "background":GRAY_100,"borderRadius":"4px","margin":"3px 8px"}),
+            ], style={"width":"42%","padding":"4px"}),
+            html.Div([
+                dcc.Graph(id="t4-scatter", config={"displaylogo":False}, style={"height":"68vh"}),
+            ], style={"width":"58%","padding":"4px"}),
+        ], style={"display":"flex"}),
+    ])
+
+
+def btn_style(color):
+    return {"padding":"4px 12px","border":"1px solid "+GRAY_300,"borderRadius":"4px",
+            "background":"white","color":color,"fontWeight":"600","cursor":"pointer","fontSize":"13px"}
+
+
+# ============================================================================
+# Task 1+5 callback — shared slider drives both 3D image + TimeWheel
+# ============================================================================
+@app.callback(
+    Output("t1-image-wrap", "children"),
+    Output("t1-step-label", "children"),
+    Output("t1-step-label", "style"),
+    Output("t1-slider", "value"),
+    Output("t1-step", "data"),
+    Output("t1-timewheel", "figure"),
+    Input("t1-slider", "value"),
+    Input("t1-bt0", "n_clicks"), Input("t1-bt99", "n_clicks"),
+    Input("t1-prev", "n_clicks"), Input("t1-next", "n_clicks"),
+    Input("t1-timer", "n_intervals"),
+    State("t1-step", "data"),
+    prevent_initial_call=False,
+)
+def t1_update(slider_val, bt0, bt99, prev, nxt, timer_n, cur_step):
+    trig = ctx.triggered_id if ctx.triggered else ""
+    if cur_step is None: cur_step = 0
+
+    step_map = {"t1-bt0": 0, "t1-bt99": 99}
+    if trig in step_map: cur_step = step_map[trig]
+    elif trig == "t1-prev": cur_step = max(0, cur_step - 1)
+    elif trig == "t1-next": cur_step = min(99, cur_step + 1)
+    elif trig == "t1-slider": cur_step = slider_val if slider_val is not None else 0
+    elif trig == "t1-timer": cur_step = (cur_step + 1) % 100
+
+    style = {"fontSize": "24px", "fontWeight": "700", "color": get_time_color(cur_step),
+             "marginLeft": "12px", "minWidth": "60px"}
+
+    tw_fig = fig_timewheel(cur_step)
+
+    return fig_task1_image(cur_step), f"t = {cur_step}", style, cur_step, cur_step, tw_fig
+
+
+@app.callback(Output("t1-timer", "disabled"), Input("t1-play", "n_clicks"),
+              State("t1-timer", "disabled"), prevent_initial_call=True)
+def t1_toggle_play(n, disabled): return not disabled
+
+
+# ============================================================================
+# Task 4 callbacks
+# ============================================================================
+@app.callback(
+    Output("t4-histogram","figure"), Output("t4-scatter","figure"), Output("t4-stats","children"),
+    Output("t4-step-indicator","children"), Output("t4-step-indicator","style"), Output("t4-step","data"),
+    Input("t4-histogram","selectedData"), Input("t4-bt0","n_clicks"), Input("t4-bt25","n_clicks"),
+    Input("t4-bt50","n_clicks"), Input("t4-bt75","n_clicks"), Input("t4-bt99","n_clicks"),
+    State("t4-step","data"), prevent_initial_call=False,
+)
+def t4_update(sel_data, bt0, bt25, bt50, bt75, bt99, cur_step):
+    trig = ctx.triggered_id if ctx.triggered else ""
+    if cur_step is None: cur_step = 99
+    step_map = {"t4-bt0":0,"t4-bt25":25,"t4-bt50":50,"t4-bt75":75,"t4-bt99":99}
+    if trig in step_map: cur_step = step_map[trig]; sel_range = None
+    elif trig == "t4-histogram" and sel_data and "range" in sel_data:
+        sel_range = [sel_data["range"]["x"][0], sel_data["range"]["x"][1]]
+    else: sel_range = None
+    hist_fig = fig_task4_histogram(cur_step, sel_range)
+    scat_fig, n_sel = fig_task4_scatter(cur_step, sel_range)
+    total = SUB4[cur_step].size
+    if sel_range and n_sel > 0:
+        pct = n_sel/total*100
+        st = f"Selected: {n_sel:,} voxels ({pct:.2f}%) | [{sel_range[0]:.3f}, {sel_range[1]:.3f}]"
+        if pct < 2: st += "  <-- High-density tail = cluster nodes!"
+    else: st = "Drag in the histogram to select a density range."
+    ind_style = {"marginLeft":"12px","fontSize":"18px","fontWeight":"700","color":get_time_color(cur_step)}
+    return hist_fig, scat_fig, st, f"t = {cur_step}", ind_style, cur_step
+
+
+# ============================================================================
+if __name__ == "__main__":
+    print("="*60)
+    print("Nyx Dashboard: http://127.0.0.1:8051")
+    print("  4 tabs: 3D+TimeWheel | Evolution | Histogram | Brushing")
+    print("="*60)
+    app.run(debug=False, host="127.0.0.1", port=8051)
