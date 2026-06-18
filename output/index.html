@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Nyx Cosmic Density — Visual Analytics</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #fff;
+    font-family: 'Segoe UI', Arial, sans-serif;
+    color: #333;
+  }
+
+  /* ── Nav tabs ── */
+  nav {
+    display: flex; gap: 0; border-bottom: 1px solid #e0e0e0;
+    padding: 0 20px; background: #fafafa;
+  }
+  nav button {
+    padding: 12px 28px; border: none; background: none;
+    font-size: 14px; font-weight: 600; cursor: pointer;
+    color: #999; border-bottom: 2px solid transparent;
+    transition: all 0.2s;
+  }
+  nav button.active { color: #2166AC; border-bottom-color: #2166AC; }
+  nav button:hover { color: #333; }
+
+  /* ── Sections ── */
+  .section { display: none; padding: 10px 15px; }
+  .section.active { display: block; }
+
+  /* ── Task 1 styles ── */
+  .s1-header { text-align: center; padding: 8px 0; }
+  .s1-header h1 { font-size: 20px; color: #1a1a1a; margin-bottom: 2px; }
+  .s1-header p { color: #999; font-size: 13px; }
+  .img-wrap {
+    width: 94vw; max-width: 1200px; margin: 0 auto;
+    border: 1px solid #e0e0e0; border-radius: 4px; overflow: hidden;
+  }
+  .img-wrap img { width: 100%; display: block; }
+  .bar {
+    width: 94vw; max-width: 1200px; margin: 10px auto 0;
+    display: flex; gap: 10px; align-items: center;
+  }
+  .step-label { color: #2166AC; font-size: 28px; font-weight: 700; min-width: 70px; }
+  input[type=range] {
+    flex: 1; height: 4px; -webkit-appearance: none; background: #ddd; border-radius: 2px;
+  }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none; width: 16px; height: 16px;
+    background: #2166AC; border-radius: 50%; cursor: pointer;
+  }
+  .bar button {
+    padding: 6px 14px; border: 1px solid #ccc; border-radius: 4px;
+    background: #fff; cursor: pointer; font-size: 13px; color: #333;
+  }
+  .bar button:hover { background: #f5f5f5; }
+  .bar button.pri { background: #2166AC; color: #fff; border-color: #2166AC; }
+
+  /* ── Task 2 styles ── */
+  .s2-header { text-align: center; padding: 10px 0; }
+  .s2-header h2 { font-size: 20px; color: #1a1a1a; margin-bottom: 2px; }
+  .s2-header p { color: #999; font-size: 13px; max-width: 800px; margin: 8px auto; line-height: 1.6; text-align: left; }
+  .figure-grid {
+    display: flex; flex-direction: column; gap: 18px;
+    max-width: 1200px; margin: 0 auto; padding: 10px 0 30px;
+  }
+  .figure-card {
+    border: 1px solid #e8e8e8; border-radius: 6px; overflow: hidden;
+    background: #fcfcfc;
+  }
+  .figure-card img { width: 100%; display: block; }
+  .figure-card .caption {
+    padding: 8px 14px; font-size: 12px; color: #888;
+    border-top: 1px solid #f0f0f0;
+  }
+  .figure-card .caption strong { color: #555; }
+
+  /* ── Footer ── */
+  footer { text-align: center; padding: 15px; color: #ccc; font-size: 11px; }
+</style>
+</head>
+<body>
+
+<nav>
+  <button class="active" onclick="switchTab('task1', this)">Task 1 — 3D Rendering</button>
+  <button onclick="switchTab('task2', this)">Task 2 — Evolution</button>
+  <button onclick="switchTab('task3', this)">Task 3 — Histogram Tracking</button>
+  <button onclick="switchTab('task4', this)">Task 4 — Brushing Dashboard</button>
+</nav>
+
+<!-- ═══════════════════════════════════════════ -->
+<!-- TASK 1 -->
+<!-- ═══════════════════════════════════════════ -->
+<div class="section active" id="task1">
+  <div class="s1-header">
+    <h1>Nyx Cosmic Density Field — 3D Volume Rendering</h1>
+    <p>Voids (blue) · Filaments (gray) · Clusters ✦ (red, glow) | 100 time steps</p>
+  </div>
+  <div class="img-wrap">
+    <img id="view" src="layer_composite_t0000.png" alt="Density field">
+  </div>
+  <div class="bar">
+    <button onclick="jump(0)">|◀ 0</button>
+    <button onclick="step(-1)">◀</button>
+    <button id="pb" class="pri" onclick="tp()">▶ Play</button>
+    <button onclick="step(1)">▶</button>
+    <button onclick="jump(99)">99 ▶|</button>
+    <span class="step-label" id="slbl">t = 0</span>
+    <input type="range" id="sld" min="0" max="99" value="0" step="1" oninput="jump(this.value)">
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════ -->
+<!-- TASK 2 -->
+<!-- ═══════════════════════════════════════════ -->
+<div class="section" id="task2">
+  <div class="s2-header">
+    <h2>Cosmic Density Evolution — Statistical Analysis</h2>
+    <p>
+      <strong>Key findings:</strong> Over 100 time steps, the density standard deviation σ increased by
+      <span style="color:#B2182B;font-weight:700">+15.4%</span> (from 0.432 to 0.498),
+      the IQR grew by <span style="color:#2166AC;font-weight:700">+16.7%</span>,
+      and the P99−P01 spread widened by <span style="color:#B2182B;font-weight:700">+15.1%</span>.
+      The minimum density dropped from 7.984 to 7.753 (voids deepen),
+      while the maximum rose from 13.843 to 14.449 (peaks intensify).
+      These trends collectively quantify the irreversible <em>clumpification</em> driven by
+      dark matter gravitational collapse — the density field transitions from a narrow,
+      symmetric distribution toward a broad, positively-skewed, bipolarized state.
+    </p>
+  </div>
+
+  <div class="figure-grid">
+    <div class="figure-card">
+      <img src="fig2a_stats_dashboard.png" alt="Stats Dashboard">
+      <div class="caption"><strong>Fig 2a:</strong> Four-panel statistical evolution dashboard — (a) central tendency decline, (b) dispersion growth (clumpification), (c) distribution shape evolution, (d) extreme value bipolarization.</div>
+    </div>
+    <div class="figure-card">
+      <img src="fig2b_violin_evolution.png" alt="Violin Plot">
+      <div class="caption"><strong>Fig 2b:</strong> Violin plot showing density distribution morphology at 5-step intervals. The transition from compact, symmetric shapes to broad, right-skewed profiles is clearly visible.</div>
+    </div>
+    <div class="figure-card">
+      <img src="fig2c_histogram_compare.png" alt="Histogram Compare">
+      <div class="caption"><strong>Fig 2c:</strong> Direct histogram overlay of t=0 vs t=99. Voids deepen (blue zone, left tail extends) while peaks intensify (red zone, right tail extends).</div>
+    </div>
+    <div class="figure-card">
+      <img src="fig2d_joint_dist.png" alt="Joint Distribution">
+      <div class="caption"><strong>Fig 2d:</strong> Hexbin joint distribution of voxel densities at t=0 vs t=99. Off-diagonal spread reveals individual voxel fate: points above the y=x line gained density (collapsed into structures), points below lost density (evacuated into voids).</div>
+    </div>
+    <div class="figure-card">
+      <img src="fig2e_clumpification.png" alt="Clumpification Metrics">
+      <div class="caption"><strong>Fig 2e:</strong> Six clumpification quantification metrics with linear trendlines and percentage change annotations.</div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════ -->
+<!-- TASK 3 -->
+<!-- ═══════════════════════════════════════════ -->
+<div class="section" id="task3">
+  <div class="s2-header">
+    <h2>Density Log-Histogram Temporal Tracking</h2>
+    <p>
+      <strong>Key findings:</strong> Using absolute density thresholds (ln(rho) &lt; 8.5 for voids, ln(rho) &gt; 12.0 for peaks),
+      the void volume fraction grew from <span style="color:#2166AC;font-weight:700">0.31% to 2.99%</span> (+2.68 pp),
+      while the distribution mode shifted from <span style="color:#2166AC;font-weight:700">9.404 to 9.229</span> (-0.176).
+      The FWHM increased by <span style="color:#B2182B;font-weight:700">+14.3%</span> (0.820 to 0.938).
+      The temporal derivative heatmap reveals mass transfer from intermediate densities toward both tails —
+      the hallmark of gravitational bipolarization.
+    </p>
+  </div>
+
+  <div class="figure-grid">
+    <div class="figure-card">
+      <img src="fig3a_heatmap.png" alt="Heatmap">
+      <div class="caption"><strong>Fig 3a:</strong> Density distribution evolution heatmap across all 100 time steps. The transition from a single narrow peak (blue, early) to a broadened distribution with extended tails (red, late) is clearly visible.</div>
+    </div>
+    <div class="figure-card">
+      <img src="fig3b_peak_width.png" alt="Peak & Width">
+      <div class="caption"><strong>Fig 3b:</strong> Distribution peak location (mode) and width (FWHM) tracking. The mode shifts downward as voids expand; the FWHM grows as the distribution broadens under gravitational collapse.</div>
+    </div>
+    <div class="figure-card">
+      <img src="fig3c_fractions.png" alt="Fractions">
+      <div class="caption"><strong>Fig 3c:</strong> Volume fraction evolution for voids (ln(rho) &lt; 8.5) and peaks (ln(rho) &gt; 12.0) using absolute density thresholds. Void fraction grows 10× over 100 steps.</div>
+    </div>
+    <div class="figure-card">
+      <img src="fig3d_derivative.png" alt="Derivative">
+      <div class="caption"><strong>Fig 3d:</strong> Temporal derivative of the histogram — d(count)/dt. Blue = mass leaving intermediate densities (flowing into voids). Red = mass accumulating at high densities (gravitational collapse into peaks).</div>
+    </div>
+    <div class="figure-card">
+      <img src="fig3e_ridge.png" alt="Ridge Plot">
+      <div class="caption"><strong>Fig 3e:</strong> Ridge plot of density histograms at 11 key time steps. The progressive flattening, broadening, and right-tail development of the distribution is visually evident.</div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════ -->
+<!-- TASK 4 -->
+<!-- ═══════════════════════════════════════════ -->
+<div class="section" id="task4">
+  <div class="s2-header">
+    <h2>Phase-Space Interactive Brushing Linked-View Analysis</h2>
+    <p>
+      <strong>Key findings:</strong> Brushing the top 1% density tail (ln(rho) &gt; P99) in the histogram
+      reveals that these extreme voxels are spatially clustered into distinct nodes — confirming the
+      correspondence between the statistical high-density tail and the cosmic web's densest structures.
+      Conversely, brushing the bottom 5% reveals spatially diffuse voids. At t=0, the top 1% voxels
+      are scattered randomly; by t=99, they are tightly grouped into filamentary nodes — direct
+      evidence of gravitational collapse organizing matter from uniform to structured.
+    </p>
+    <p style="margin-top:4px;">
+      <strong>Live dashboard:</strong> Open <code>http://127.0.0.1:8050</code> in your browser
+      (run <code>python task4_dashboard.py</code> first) to interactively brush density ranges
+      and see the 3D spatial view update in real time.
+    </p>
+  </div>
+
+  <div class="figure-grid">
+    <div class="figure-card">
+      <img src="fig4a_full.png" alt="Full View">
+      <div class="caption"><strong>Fig 4a:</strong> Full density distribution at t=99 — all voxels shown. The histogram (left) and 3D spatial view (right) provide the baseline for brushing analysis.</div>
+    </div>
+    <div class="figure-card">
+      <img src="fig4b_top1pct.png" alt="Top 1%">
+      <div class="caption"><strong>Fig 4b:</strong> Brushing selection: Top 1% density (ln(rho) &gt; P99). These extreme-density voxels form spatially clustered nodes — the cores of cosmic web clusters — validating the histogram tail ↔ structure correspondence.</div>
+    </div>
+    <div class="figure-card">
+      <img src="fig4c_bottom5pct.png" alt="Bottom 5%">
+      <div class="caption"><strong>Fig 4c:</strong> Brushing selection: Bottom 5% density (ln(rho) &lt; P05). Voids are spatially extended and diffuse, occupying the vast regions between filamentary structures.</div>
+    </div>
+    <div class="figure-card">
+      <img src="fig4d_mid_filaments.png" alt="Middle 50%">
+      <div class="caption"><strong>Fig 4d:</strong> Brushing selection: Middle 50% (IQR). The filamentary cosmic web skeleton emerges — connecting voids to clusters in a sponge-like topology.</div>
+    </div>
+    <div class="figure-card">
+      <img src="fig4e_comparison.png" alt="Comparison">
+      <div class="caption"><strong>Fig 4e:</strong> Temporal comparison: Top 1% voxels at t=0 (top) vs t=99 (bottom). At t=0, high-density voxels are randomly distributed; by t=99, gravitational collapse has organized them into distinct cluster nodes — direct visualization of structure formation.</div>
+    </div>
+  </div>
+</div>
+
+<footer>Nyx Cosmological Simulation — 128³ AMR Grid — 100 Time Steps — Visual Analytics Project</footer>
+
+<!-- ═══════════════════════════════════════════ -->
+<script>
+// ── Tab switching ──
+function switchTab(id, btn) {
+  document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+  document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  btn.classList.add('active');
+}
+
+// ── Task 1 slider ──
+const KS = [0, 25, 50, 75, 99];
+let cs = 0, pl = false, tm = null;
+function nk(s) { return KS.reduce((p,c)=> Math.abs(c-s)<Math.abs(p-s)?c:p); }
+function upd() {
+  document.getElementById('view').src = `layer_composite_t${String(nk(cs)).padStart(4,'0')}.png`;
+  document.getElementById('slbl').textContent = `t = ${cs}`;
+  document.getElementById('sld').value = cs;
+}
+function jump(v) { cs = parseInt(v); upd(); }
+function step(d) { cs = Math.max(0, Math.min(99, cs + d)); upd(); }
+function tp() {
+  const b = document.getElementById('pb');
+  if (pl) { pl=false; clearInterval(tm); b.textContent='▶ Play'; b.classList.add('pri'); }
+  else { pl=true; b.textContent='⏸ Pause'; b.classList.remove('pri');
+    tm=setInterval(()=>{ cs=(cs+1)%100; upd(); }, 160); }
+}
+document.addEventListener('keydown', e => {
+  if (document.getElementById('task1').classList.contains('active')) {
+    if (e.key==='ArrowLeft') { e.preventDefault(); step(-1); }
+    if (e.key==='ArrowRight') { e.preventDefault(); step(1); }
+    if (e.key===' ') { e.preventDefault(); tp(); }
+  }
+});
+upd();
+</script>
+</body>
+</html>
