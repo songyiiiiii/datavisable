@@ -67,9 +67,7 @@ for ts in T4_STEPS:
 print("Ready.\n")
 
 # Task 1 frame steps
-T1_STEPS = list(range(0, 100, 2))
-if 99 not in T1_STEPS: T1_STEPS.append(99)
-T1_STEPS = sorted(set(T1_STEPS))
+T1_STEPS = list(range(100))  # all 100 frames
 
 # Pre-load 32^3 data for go.Volume real-time rendering
 VOL_SS = 4  # 128 -> 32
@@ -523,15 +521,11 @@ def layout_task1_merged():
                    style={"color": GRAY_500, "fontSize": "13px", "margin": "0 0 8px"}),
         ], style={"textAlign": "center"}),
 
-        # ── Row 1: 3D Volume rendering + TimeWheel ──
+        # ── Row 1: 3D rendered image + TimeWheel ──
         html.Div([
             html.Div([
-                dcc.Loading(
-                    dcc.Graph(id="t1-volume", figure=fig_t1_volume(0),
-                              config={"displaylogo": False},
-                              style={"height": "55vh"}),
-                    color=BLUE_500,
-                ),
+                html.Div(id="t1-image-wrap", children=fig_task1_image(0),
+                         style={"border": "1px solid "+GRAY_200, "borderRadius": "4px", "overflow": "hidden"}),
             ], style={"flex": "1.2", "padding": "4px"}),
             html.Div([
                 dcc.Graph(id="t1-timewheel", figure=fig_timewheel(0),
@@ -657,7 +651,7 @@ def btn_style(color):
 # Task 1+5 callback — shared slider drives both 3D image + TimeWheel
 # ============================================================================
 @app.callback(
-    Output("t1-volume", "figure"),
+    Output("t1-image-wrap", "children"),
     Output("t1-step-label", "children"),
     Output("t1-step-label", "style"),
     Output("t1-slider", "value"),
@@ -695,7 +689,7 @@ def t1_update(slider_val, rotation_deg, sel_data, bt0, bt99, prev, nxt, timer_n,
     style = {"fontSize": "24px", "fontWeight": "700", "color": get_time_color(cur_step),
              "marginLeft": "12px", "minWidth": "60px"}
 
-    vol_fig = fig_t1_volume(cur_step)
+    vol_fig = fig_task1_image(cur_step)
     tw_fig = fig_timewheel(cur_step, rotation_deg)
     hist_fig = fig_t1_histogram(cur_step, brush_data)
     part_fig = fig_t1_particles(cur_step, brush_data)
@@ -743,7 +737,7 @@ def t4_update(sel_data, bt0, bt25, bt50, bt75, bt99, cur_step):
 # ============================================================================
 if __name__ == "__main__":
     print("="*60)
-    print("Nyx Dashboard: http://127.0.0.1:3000")
+    print("Nyx Dashboard: http://127.0.0.1:5001")
     print("  4 tabs: 3D+TimeWheel | Evolution | Histogram | Brushing")
     print("="*60)
-    app.run(debug=False, host="127.0.0.1", port=3000)
+    app.run(debug=False, host="127.0.0.1", port=5001)
