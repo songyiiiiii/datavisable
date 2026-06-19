@@ -84,6 +84,19 @@ for ts in T1_STEPS:
 # ============================================================================
 # Figure builders
 # ============================================================================
+def fig_task1_image(step):
+    """Load pre-rendered PNG frame for given time step."""
+    nearest = min(T1_STEPS, key=lambda x: abs(x - step))
+    pad = str(nearest).zfill(4)
+    path = os.path.join(OUTPUT_DIR, "task1", f"layer_composite_t{pad}.png")
+    if os.path.exists(path):
+        with open(path, "rb") as f:
+            enc = base64.b64encode(f.read()).decode()
+        return html.Img(src=f"data:image/png;base64,{enc}",
+                        style={"width": "100%", "display": "block"})
+    return html.Div("Image not found", style={"color": "red", "padding": "40px"})
+
+
 def fig_t1_volume(step):
     """Multi-layer isosurface via Plotly go.Isosurface (matching PyVista layers)."""
     nearest = min(T1_STEPS, key=lambda x: abs(x - step))
@@ -737,7 +750,7 @@ def t4_update(sel_data, bt0, bt25, bt50, bt75, bt99, cur_step):
 # ============================================================================
 if __name__ == "__main__":
     print("="*60)
-    print("Nyx Dashboard: http://127.0.0.1:5001")
+    print("Nyx Dashboard: http://127.0.0.1:5002")
     print("  4 tabs: 3D+TimeWheel | Evolution | Histogram | Brushing")
     print("="*60)
-    app.run(debug=False, host="127.0.0.1", port=5001)
+    app.run(debug=False, host="127.0.0.1", port=5003)
