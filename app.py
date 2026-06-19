@@ -87,37 +87,34 @@ for ts in T1_STEPS:
 # Figure builders
 # ============================================================================
 def fig_t1_volume(step):
-    """Real-time WebGL volume rendering via Plotly go.Volume."""
+    """Multi-layer isosurface via Plotly go.Isosurface (matching PyVista layers)."""
     nearest = min(T1_STEPS, key=lambda x: abs(x - step))
     if nearest not in VOL_DATA:
         nearest = min(VOL_DATA.keys(), key=lambda x: abs(x - nearest))
-    values = VOL_DATA[nearest]
+    values = VOL_DATA[nearest].reshape(VOL_SIZE, VOL_SIZE, VOL_SIZE)
 
     fig = go.Figure()
-    fig.add_trace(go.Volume(
-        x=VOL_X, y=VOL_Y, z=VOL_Z, value=values,
-        isomin=7.8, isomax=13.5, surface_count=22,
-        colorscale=[
-            [0.00, BLUE_700], [0.10, BLUE_500], [0.20, BLUE_300],
-            [0.35, GRAY_500], [0.50, GRAY_200], [0.65, RED_100],
-            [0.80, RED_300], [0.90, RED_500], [1.00, RED_700],
-        ],
-        opacityscale=[
-            [7.5, 0.0], [8.0, 0.02], [8.5, 0.05], [9.2, 0.08],
-            [10.0, 0.20], [10.8, 0.45], [12.0, 0.70], [13.5, 0.90],
-        ],
-        caps=dict(x_show=False, y_show=False, z_show=False),
-        slices_z=dict(show=True, locations=[40, 80]),
-        lighting=dict(ambient=0.3, diffuse=0.7, specular=0.3, roughness=0.5, fresnel=0.2),
-        lightposition=dict(x=300, y=300, z=400),
-        showscale=True,
-        colorbar=dict(title=dict(text="ln(rho)", font=dict(color=GRAY_600)),
-                      tickfont=dict(color=GRAY_500), outlinecolor=GRAY_300,
-                      thickness=12, len=0.55),
-        hoverinfo="skip", name="",
-    ))
+
+    iso_levels = [8.0, 8.6, 9.2, 9.8, 10.5, 11.2, 12.0, 14.0]
+    iso_colors = [BLUE_700, BLUE_500, BLUE_300, GRAY_400, RED_100, RED_300, RED_500, RED_700]
+    iso_alpha  = [0.06, 0.10, 0.15, 0.22, 0.32, 0.45, 0.58, 0.72]
+
+    for lvl, clr, alpha in zip(iso_levels, iso_colors, iso_alpha):
+        fig.add_trace(go.Isosurface(
+            x=VOL_X, y=VOL_Y, z=VOL_Z, value=values,
+            isomin=lvl, isomax=lvl,
+            surface=dict(count=1, fill=0.9),
+            caps=dict(x_show=False, y_show=False, z_show=False),
+            opacity=alpha,
+            colorscale=[[0, clr], [1, clr]],
+            showscale=False, hoverinfo="skip",
+            lighting=dict(ambient=0.3, diffuse=0.7, specular=0.3, roughness=0.5, fresnel=0.2),
+            lightposition=dict(x=300, y=300, z=400),
+        ))
+
     fig.update_layout(
-        title=dict(text=f"Task 1: Volume Rendering — t={step}", font=dict(color=BLACK, size=13)),
+        title=dict(text=f"Task 1: Multi-Layer Isosurface — t={step} (drag to rotate)",
+                   font=dict(color=BLACK, size=13)),
         scene=dict(
             xaxis=dict(title="X", range=[0,127], gridcolor=GRAY_200, color=GRAY_500, backgroundcolor=WHITE),
             yaxis=dict(title="Y", range=[0,127], gridcolor=GRAY_200, color=GRAY_500, backgroundcolor=WHITE),
@@ -130,7 +127,71 @@ def fig_t1_volume(step):
     return fig
 
 
-def fig_task1_image(step):
+def fig_t1_particles(step, brush_range=None):
+    """3D particle scatter linked to brush selection."""
+    SS = 4
+    # Get nearest key step
+    ks = REPRESENTATIVE_STEPS
+    ns = min(ks, key=lambda x: abs(x - step))
+    if ns not in SUB4:
+        d = ALL_100[ns][::SS, ::SS, ::SS]
+        SUB4[ns] = np.ascontiguousarray(np.transpose(d, (2, 1, 0)))
+    d3 = SUB4[ns]
+    idx = np.argwhere(np.ones_like(d3, dtype=bool))
+    vals = d3.flatten()
+
+    if brush_range is not None:
+        mask = (vals >= brush_range[0]) & (vals <= brush_range[1])
+        idx = idx[mask]; vals = vals[mask]
+
+    n_total = len(vals)
+    if n_total > 5000:
+        rng = np.random.default_rng(42)
+        si = rng.choice(n_total, size=5000, replace=False)
+        idx = idx[si]; vals = vals[si]
+
+    fig = go.Figure()
+    if len(vals) > 0:
+        # Simple blue-gray-red gradient matching project palette
+        colors = []
+        for v in vals:
+            t = np.clip((v - 7.5) / 7.5, 0, 1)
+            if t < 0.3:
+                c = (0.13 + 0.7*t, 0.40 + 0.5*t, 0.67 - 0.5*t)
+            elif t < 0.5:
+                s = (t - 0.3) / 0.2
+                c = (0.34 + 0.56*s, 0.55 + 0.35*s, 0.52 + 0.38*s)
+            elif t < 0.7:
+                s = (t - 0.5) / 0.2
+                c = (0.90 + 0.05*s, 0.90 - 0.12*s, 0.90 - 0.22*s)
+            else:
+                s = (t - 0.7) / 0.3
+                c = (0.95 - 0.35*s, 0.78 - 0.68*s, 0.68 - 0.58*s)
+            colors.append(f"rgb({int(255*c[0])},{int(255*c[1])},{int(255*c[2])})")
+        fig.add_trace(go.Scatter3d(
+            x=idx[:, 0] * SS, y=idx[:, 1] * SS, z=idx[:, 2] * SS,
+            mode="markers",
+            marker=dict(size=3, color=colors, opacity=0.6),
+            showlegend=False,
+            hovertemplate="(%{x},%{y},%{z})<br>ln(rho)=%{text:.3f}<extra></extra>",
+            text=[float(v) for v in vals],
+        ))
+
+    title = f"3D Particles — t={step}"
+    if brush_range:
+        title += f" | [{brush_range[0]:.2f},{brush_range[1]:.2f}] → {n_total:,} vox"
+    fig.update_layout(
+        title=dict(text=title, font=dict(color=RED_500 if brush_range else BLACK, size=11)),
+        scene=dict(
+            xaxis=dict(title="X", range=[0, 127], gridcolor=GRAY_200, color=GRAY_500, backgroundcolor=WHITE),
+            yaxis=dict(title="Y", range=[0, 127], gridcolor=GRAY_200, color=GRAY_500, backgroundcolor=WHITE),
+            zaxis=dict(title="Z", range=[0, 127], gridcolor=GRAY_200, color=GRAY_500, backgroundcolor=WHITE),
+            aspectmode="cube", camera=dict(eye=dict(x=2.0, y=2.0, z=1.5)),
+        ),
+        paper_bgcolor=WHITE, margin=dict(l=0, r=0, t=35, b=0),
+        height=330, uirevision="t1-particles",
+    )
+    return fig
     nearest = min(T1_STEPS, key=lambda x: abs(x - step))
     path = os.path.join(OUTPUT_DIR, "task1", f"layer_composite_t{nearest:04d}.png")
     if os.path.exists(path):
@@ -478,17 +539,21 @@ def layout_task1_merged():
             ], style={"flex": "1", "padding": "4px"}),
         ], style={"display": "flex", "maxWidth": "1400px", "margin": "0 auto"}),
 
-        # ── Row 2: Brush histogram + Evolution sparklines ──
+        # ── Row 2: Histogram + 3D Particles + Sparklines ──
         html.Div([
             html.Div([
                 dcc.Graph(id="t1-histogram", config={"displaylogo": False,
                           "modeBarButtonsToAdd": ["select2d"]},
-                          style={"height": "22vh"}),
+                          style={"height": "30vh"}),
             ], style={"flex": "1", "padding": "4px"}),
             html.Div([
+                dcc.Graph(id="t1-particles", config={"displaylogo": False},
+                          style={"height": "34vh"}),
+            ], style={"flex": "1.4", "padding": "4px"}),
+            html.Div([
                 dcc.Graph(id="t1-sparklines", config={"displaylogo": False},
-                          style={"height": "22vh"}),
-            ], style={"flex": "1", "padding": "4px"}),
+                          style={"height": "34vh"}),
+            ], style={"flex": "0.8", "padding": "4px"}),
         ], style={"display": "flex", "maxWidth": "1400px", "margin": "0 auto"}),
 
         # ── Rotation slider ──
@@ -599,6 +664,7 @@ def btn_style(color):
     Output("t1-step", "data"),
     Output("t1-timewheel", "figure"),
     Output("t1-histogram", "figure"),
+    Output("t1-particles", "figure"),
     Output("t1-sparklines", "figure"),
     Output("t1-brush", "data"),
     Input("t1-slider", "value"),
@@ -632,10 +698,11 @@ def t1_update(slider_val, rotation_deg, sel_data, bt0, bt99, prev, nxt, timer_n,
     vol_fig = fig_t1_volume(cur_step)
     tw_fig = fig_timewheel(cur_step, rotation_deg)
     hist_fig = fig_t1_histogram(cur_step, brush_data)
+    part_fig = fig_t1_particles(cur_step, brush_data)
     spark_fig = fig_t1_sparklines(cur_step, brush_data)
 
     return (vol_fig, f"t = {cur_step}", style, cur_step, cur_step,
-            tw_fig, hist_fig, spark_fig, brush_data)
+            tw_fig, hist_fig, part_fig, spark_fig, brush_data)
 
 
 @app.callback(Output("t1-timer", "disabled"), Input("t1-play", "n_clicks"),
@@ -676,7 +743,7 @@ def t4_update(sel_data, bt0, bt25, bt50, bt75, bt99, cur_step):
 # ============================================================================
 if __name__ == "__main__":
     print("="*60)
-    print("Nyx Dashboard: http://127.0.0.1:9055")
+    print("Nyx Dashboard: http://127.0.0.1:3000")
     print("  4 tabs: 3D+TimeWheel | Evolution | Histogram | Brushing")
     print("="*60)
-    app.run(debug=False, host="127.0.0.1", port=9055)
+    app.run(debug=False, host="127.0.0.1", port=3000)
