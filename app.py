@@ -528,69 +528,98 @@ def switch_tab(tab):
 def layout_task1_merged():
     return html.Div([
         html.Div([
-            html.H1("Nyx Cosmic Density — Integrated Visual Explorer",
+            html.H1("Nyx Cosmic Density – Integrated Visual Explorer",
                     style={"color": BLACK, "fontSize": "20px", "margin": "5px 0 2px"}),
-            html.P("3D Model + TimeWheel + Brush Histogram + Sparklines — one slider drives all",
+            html.P("3D Model + TimeWheel + Brush Histogram + Sparklines – one slider drives all",
                    style={"color": GRAY_500, "fontSize": "13px", "margin": "0 0 8px"}),
         ], style={"textAlign": "center"}),
 
-        # ── Row 1: 3D rendered image + TimeWheel ──
+        # Main grid: 3D render CENTERED, supporting panels around it
         html.Div([
-            html.Div([
-                html.Div(id="t1-image-wrap", children=fig_task1_image(0),
-                         style={"border": "1px solid "+GRAY_200, "borderRadius": "4px", "overflow": "hidden"}),
-            ], style={"flex": "1.2", "padding": "4px"}),
+            # Left-top: TimeWheel – radial statistical context
             html.Div([
                 dcc.Graph(id="t1-timewheel", figure=fig_timewheel(0),
-                          config={"displaylogo": False}, style={"height": "48vh"}),
-            ], style={"flex": "1", "padding": "4px"}),
-        ], style={"display": "flex", "maxWidth": "1400px", "margin": "0 auto"}),
+                          config={"displaylogo": False}, style={"height": "100%", "width": "100%"}),
+            ], style={"gridArea": "tw", "minHeight": "0", "minWidth": "0"}),
 
-        # ── Row 2: Histogram + 3D Particles + Sparklines ──
-        html.Div([
+            # CENTER: 3D rendered model – main visualization (spans both rows)
             html.Div([
-                dcc.Graph(id="t1-histogram", config={"displaylogo": False,
-                          "modeBarButtonsToAdd": ["select2d"]},
-                          style={"height": "30vh"}),
-            ], style={"flex": "1", "padding": "4px"}),
-            html.Div([
-                dcc.Graph(id="t1-particles", config={"displaylogo": False},
-                          style={"height": "34vh"}),
-            ], style={"flex": "1.4", "padding": "4px"}),
+                html.Div(id="t1-image-wrap", children=fig_task1_image(0),
+                         style={"border": "1px solid " + GRAY_200, "borderRadius": "4px",
+                                "overflow": "hidden", "height": "100%", "display": "flex",
+                                "alignItems": "center", "justifyContent": "center"}),
+            ], style={"gridArea": "render", "minHeight": "0", "minWidth": "0"}),
+
+            # Right-top: Sparklines – temporal evolution trends
             html.Div([
                 dcc.Graph(id="t1-sparklines", config={"displaylogo": False},
-                          style={"height": "34vh"}),
-            ], style={"flex": "0.8", "padding": "4px"}),
-        ], style={"display": "flex", "maxWidth": "1400px", "margin": "0 auto"}),
+                          style={"height": "100%", "width": "100%"}),
+            ], style={"gridArea": "spark", "minHeight": "0", "minWidth": "0"}),
 
-        # ── Rotation slider ──
+            # Bottom-left: Brush Histogram – density distribution
+            html.Div([
+                dcc.Graph(id="t1-histogram",
+                          config={"displaylogo": False,
+                                  "modeBarButtonsToAdd": ["select2d"]},
+                          style={"height": "100%", "width": "100%"}),
+            ], style={"gridArea": "hist", "minHeight": "0", "minWidth": "0"}),
+
+            # Bottom-right: 3D Particles – linked brush selection view
+            html.Div([
+                dcc.Graph(id="t1-particles", config={"displaylogo": False},
+                          style={"height": "100%", "width": "100%"}),
+            ], style={"gridArea": "parts", "minHeight": "0", "minWidth": "0"}),
+        ], style={
+            "display": "grid",
+            "gridTemplateAreas": """
+                "tw    render spark"
+                "hist  render parts"
+            """,
+            "gridTemplateColumns": "1.2fr 1.9fr 1.2fr",
+            "gridTemplateRows": "1fr 1fr",
+            "maxWidth": "1440px",
+            "margin": "0 auto",
+            "gap": "8px",
+            "height": "calc(100vh - 205px)",
+            "minHeight": "480px",
+            "padding": "0 4px",
+        }),
+
+        # Rotation slider
         html.Div([
             html.Span("TimeWheel Rotation: ", style={"color": GRAY_500, "fontSize": "12px"}),
             dcc.Slider(id="t1-rotation", min=0, max=360, value=0, step=5,
-                       marks={0:"0°",90:"90°",180:"180°",270:"270°",360:"360°"},
-                       tooltip={"placement":"bottom"}),
-        ], style={"maxWidth":"1400px","margin":"2px auto 0","display":"flex","gap":"10px","alignItems":"center"}),
+                       marks={0: "0°", 90: "90°", 180: "180°", 270: "270°", 360: "360°"},
+                       tooltip={"placement": "bottom"}),
+        ], style={"maxWidth": "1440px", "margin": "2px auto 0", "display": "flex",
+                  "gap": "10px", "alignItems": "center", "padding": "0 4px"}),
 
-        # ── Shared time slider ──
+        # Shared time slider
         html.Div([
             html.Button("|<< 0", id="t1-bt0", n_clicks=0, style=BTN),
             html.Button("<", id="t1-prev", n_clicks=0, style=BTN),
             html.Button("Play", id="t1-play", n_clicks=0,
-                        style={**BTN, "background": BLUE_500, "color": "white", "borderColor": BLUE_500, "fontWeight": "600"}),
+                        style={**BTN, "background": BLUE_500, "color": "white",
+                               "borderColor": BLUE_500, "fontWeight": "600"}),
             html.Button(">", id="t1-next", n_clicks=0, style=BTN),
             html.Button("99 >>|", id="t1-bt99", n_clicks=0, style=BTN),
             html.Span("t = 0", id="t1-step-label",
-                      style={"fontSize": "24px", "fontWeight": "700", "color": BLUE_700, "marginLeft": "12px", "minWidth": "60px"}),
+                      style={"fontSize": "24px", "fontWeight": "700",
+                             "color": BLUE_700, "marginLeft": "12px", "minWidth": "60px"}),
             dcc.Slider(id="t1-slider", min=0, max=99, value=0, step=1,
-                       marks={0:"0",25:"25",50:"50",75:"75",99:"99"}, tooltip={"placement": "bottom"}),
-        ], style={"maxWidth": "1400px", "margin": "4px auto 0", "display": "flex", "gap": "6px", "alignItems": "center"}),
+                       marks={0: "0", 25: "25", 50: "50", 75: "75", 99: "99"},
+                       tooltip={"placement": "bottom"}),
+        ], style={"maxWidth": "1440px", "margin": "4px auto 0", "display": "flex",
+                  "gap": "6px", "alignItems": "center", "padding": "0 4px"}),
 
         html.P("Space = Play/Pause | Arrow keys = Step | Drag in histogram to brush density range",
-               style={"textAlign": "center", "color": GRAY_400, "fontSize": "11px", "marginTop": "2px"}),
+               style={"textAlign": "center", "color": GRAY_400,
+                      "fontSize": "11px", "marginTop": "2px"}),
 
         dcc.Store(id="t1-brush", data=None),
         dcc.Interval(id="t1-timer", interval=160, disabled=True),
     ])
+
 
 
 def layout_static_figs(folder, title, figs, summary=None):
