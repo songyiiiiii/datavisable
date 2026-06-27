@@ -1,0 +1,15 @@
+{
+  "step": 73,
+  "size": 64,
+  "densityRange": [
+    7.811502456665039,
+    13.988381385803223
+  ],
+  "globalRange": [
+    7.5,
+    15.0
+  ],
+  "format": "float32",
+  "byteOrder": "little",
+  "axes": "XYZ (C-order)"
+}

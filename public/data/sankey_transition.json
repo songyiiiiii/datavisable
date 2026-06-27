@@ -1,0 +1,100 @@
+{
+  "nodes": [
+    {
+      "name": "t=0 Void"
+    },
+    {
+      "name": "t=0 Sheet"
+    },
+    {
+      "name": "t=0 Filament"
+    },
+    {
+      "name": "t=0 Node"
+    },
+    {
+      "name": "t=99 Void"
+    },
+    {
+      "name": "t=99 Sheet"
+    },
+    {
+      "name": "t=99 Filament"
+    },
+    {
+      "name": "t=99 Node"
+    }
+  ],
+  "links": [
+    {
+      "source": "t=0 Void",
+      "target": "t=99 Void",
+      "value": 445
+    },
+    {
+      "source": "t=0 Void",
+      "target": "t=99 Sheet",
+      "value": 148
+    },
+    {
+      "source": "t=0 Void",
+      "target": "t=99 Filament",
+      "value": 2
+    },
+    {
+      "source": "t=0 Sheet",
+      "target": "t=99 Void",
+      "value": 5493
+    },
+    {
+      "source": "t=0 Sheet",
+      "target": "t=99 Sheet",
+      "value": 127837
+    },
+    {
+      "source": "t=0 Sheet",
+      "target": "t=99 Filament",
+      "value": 11479
+    },
+    {
+      "source": "t=0 Sheet",
+      "target": "t=99 Node",
+      "value": 21
+    },
+    {
+      "source": "t=0 Filament",
+      "target": "t=99 Void",
+      "value": 104
+    },
+    {
+      "source": "t=0 Filament",
+      "target": "t=99 Sheet",
+      "value": 25985
+    },
+    {
+      "source": "t=0 Filament",
+      "target": "t=99 Filament",
+      "value": 27595
+    },
+    {
+      "source": "t=0 Filament",
+      "target": "t=99 Node",
+      "value": 422
+    },
+    {
+      "source": "t=0 Node",
+      "target": "t=99 Sheet",
+      "value": 13
+    },
+    {
+      "source": "t=0 Node",
+      "target": "t=99 Filament",
+      "value": 301
+    },
+    {
+      "source": "t=0 Node",
+      "target": "t=99 Node",
+      "value": 155
+    }
+  ]
+}

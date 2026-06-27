@@ -32,3 +32,4 @@ processed/track_data.npy
 processed/histogram_matrix.npy
 processed/histogram_derivative.npy
 processed/track_indices.npy
+node_modules

@@ -1,0 +1,47 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ================================================================
+   Cosmic Evolution Explorer — Dark Cosmic Theme
+   bg #09080D | panel #13121A | low #48BFE3 | mid #9C89B8 | high #F25F5C
+   ================================================================ */
+
+:root {
+  --bg:       #09080D;
+  --panel:    #13121A;
+  --border:   #242233;
+  --text:     #C5C3D8;
+  --muted:    #6B6880;
+  --blue:     #48BFE3;
+  --purple:   #9C89B8;
+  --red:      #F25F5C;
+  --gold:     #FFE066;
+}
+
+* { margin:0; padding:0; box-sizing:border-box; }
+
+html, body, #root {
+  height:100%; width:100%; overflow:hidden;
+  background: var(--bg);
+  font-family: 'Inter','Noto Sans SC',system-ui,sans-serif;
+  -webkit-font-smoothing:antialiased;
+  color: var(--text);
+}
+
+::-webkit-scrollbar { width:4px; height:4px; }
+::-webkit-scrollbar-track { background:transparent; }
+::-webkit-scrollbar-thumb { background:#242233; border-radius:2px; }
+
+input[type="range"] {
+  -webkit-appearance:none; appearance:none;
+  height:3px; background:#242233; border-radius:2px; outline:none;
+}
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance:none; appearance:none;
+  width:14px; height:14px; border-radius:50%;
+  background:var(--blue); border:2px solid var(--bg); cursor:pointer;
+  box-shadow:0 0 8px rgba(72,191,227,0.3);
+}
+
+::selection { background:rgba(72,191,227,0.15); color:var(--text); }
